@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -120,10 +120,48 @@ export default function Chat() {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const handleScroll = () => {
+    const scrollArea = document.getElementById("scroll-area");
+    if (scrollArea) {
+      const threshold = 10; // px, how close to bottom counts as "at bottom"
+      const atBottom =
+        scrollArea.scrollHeight -
+          scrollArea.scrollTop -
+          scrollArea.clientHeight <=
+        threshold;
+      setIsAtBottom(atBottom);
+    }
+  };
+
+  useEffect(() => {
+    const scrollArea = document.getElementById("scroll-area");
+    if (scrollArea) {
+      scrollArea.addEventListener("scroll", handleScroll);
+      // Check initial position
+      handleScroll();
+      return () => {
+        scrollArea.removeEventListener("scroll", handleScroll);
+      };
+    }
+  }, []);
+
+  const scrollToBottom = () => {
+    console.log("scrollToBottom");
+    const scrollArea = document.getElementById("scroll-area");
+    if (scrollArea) {
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    }
+  };
+
   return (
     <div className="min-h-[100vh] relative flex w-full flex-1 flex-col overflow-hidden transition-[width,height] bg-zinc-50">
       <div className="absolute bottom-0 top-0 w-full">
-        <div className="absolute inset-0 overflow-y-scroll sm:pt-3.5 pb-[200px]">
+        <div
+          className="absolute inset-0 overflow-y-scroll sm:pt-3.5 pb-[200px]"
+          id="scroll-area"
+        >
           <div className="mx-auto flex w-full max-w-3xl flex-col space-y-12 px-4 pb-10 pt-safe-offset-10">
             <div className="mx-auto flex h-full w-full max-w-3xl flex-col space-y-8 px-4 py-6">
               {messages.map((msg, idx) => (
@@ -186,12 +224,19 @@ export default function Chat() {
         </div>
         <div className="pointer-events-none absolute bottom-2 z-10 w-full px-2">
           <div className="relative mx-auto flex w-full max-w-3xl flex-col text-center">
-            <div className="flex justify-center">
-              <Button className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-500 shadow-sm hover:bg-gray-50">
-                <span>Scroll to bottom</span>
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </div>
+            {!isAtBottom ? (
+              <div className="flex justify-center">
+                <Button
+                  className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-500 shadow-sm hover:bg-gray-50"
+                  onClick={scrollToBottom}
+                >
+                  <span>Scroll to bottom</span>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <></>
+            )}
 
             <form className="bg-gray-50/10 rounded-md bg-clip-padding backdrop-filter backdrop-blur-sm ">
               <div className="flex flex-grow flex-col px-3 py-2">

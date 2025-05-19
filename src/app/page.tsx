@@ -4,7 +4,7 @@ import Image from "next/image";
 export default function Home() {
   return (
     <section className="min-h-[calc(100dvh-4rem)] md:min-h[calc(100dvh-5rem)] z-10 flex flex-col items-center justify-center ">
-      <main className="mt-8 max-w-[390px] lg:max-w-6xl  w-full mx-auto @container">
+      <main className="mt-8 max-w-[390px] lg:max-w-6xl  w-full mx-auto @ontainer">
         <div className="w-full relative flex flex-col items-center justify-center isolate bg-blue-50/50 overflow-hidden px-4 py-6 h-full lg:py-8 min-h-[580px] text-[15.5px]">
           <div className="mt-10 max-w-3xl mx-auto flex flex-col items-center h-full">
             <div className="text-center space-y-5 ">
