@@ -1,7 +1,19 @@
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 
+import { useRouter } from 'next/navigation'; // For navigation (App Router)
+import { useState } from 'react'; // For the loading state
+import { createAndRedirectToNewSession } from '../lib/actions/sessions'; // Your new function!
+
 export default function Home() {
+  const router = useRouter(); // Initialize the router
+  const [isLoading, setIsLoading] = useState(false); // Initialize loading state
+
+  // This is the simplified handler that calls your separated function
+  const handleClick = () => {
+    // Pass the router instance and the setIsLoading setter to your action function
+    createAndRedirectToNewSession({ router, setIsLoading });
+  };
   return (
     <section className="min-h-[calc(100dvh-4rem)] md:min-h[calc(100dvh-5rem)] z-10 flex flex-col items-center justify-center ">
       <main className="mt-8 max-w-[390px] lg:max-w-6xl  w-full mx-auto @ontainer">
@@ -38,7 +50,12 @@ export default function Home() {
                 Create a session, invite others, and interact with one shared AI
                 live, turn-by-turn, with full context.
               </p>
-              <Button>Start a session!</Button>
+              <Button
+              onClick={handleClick} // This is the correct way to pass props
+                disabled={isLoading}  // This is also a prop
+              >
+                {isLoading ? 'Starting your session...' : 'Start a session!'}
+              </Button>
             </div>
           </div>
         </div>
