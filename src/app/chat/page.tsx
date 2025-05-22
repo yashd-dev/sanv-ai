@@ -286,7 +286,7 @@ export default function Chat() {
 
           <form
             onSubmit={handleSubmit}
-            className="rounded-xl border border-white/20 bg-white/70 p-2 shadow-lg backdrop-blur-lg"
+            className="rounded-xl border border-white/20 bg-white/70 p-2 shadow-lg backdrop-blur-sm"
           >
             <div className="flex flex-col">
               <Textarea
@@ -321,7 +321,7 @@ export default function Chat() {
                 <Button
                   type="submit"
                   disabled={isSending || !input.trim()}
-                  className="h-8 bg-white/80 hover:bg-white"
+                  className="h-8 bg-black hover:bg-white !disabled:bg-zinc-900"
                 >
                   {isSending ? (
                     <div className="flex items-center gap-2">

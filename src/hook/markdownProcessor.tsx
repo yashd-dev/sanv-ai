@@ -41,7 +41,7 @@ export const useMarkdownProcessor = (content: string) => {
       .use(remarkGfm)
       .use(remarkRehype)
       .use(rehypeShiki, {
-        theme: "catppuccin-frappe",
+        theme: "github-light",
       })
       .use(rehypeReact, {
         createElement,
@@ -203,7 +203,7 @@ const CodeBlock = ({
   }
 
   return (
-    <code className="rounded bg-zinc-700 px-1.5 py-0.5 text-sm">
+    <code className="rounded px-1.5 py-0.5 text-sm text-black">
       {children}
     </code>
   );
