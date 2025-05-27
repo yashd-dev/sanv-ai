@@ -46,6 +46,9 @@ export default function Navbar() {
           <div className="flex items-center gap-4">
             {user ? (
               <div className="flex items-center gap-4">
+                <Link href="/dashboard">
+                  <Button variant="ghost">Dashboard</Button>
+                </Link>
                 <Link href="/chat">
                   <Button variant="ghost">Chat</Button>
                 </Link>

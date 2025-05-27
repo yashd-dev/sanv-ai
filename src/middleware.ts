@@ -5,8 +5,12 @@ export async function middleware(request: NextRequest) {
   const response = await updateSession(request);
   const { pathname } = request.nextUrl;
 
-  // Only protect the /chat route
-  if (pathname === "/chat") {
+  // Protect the /chat and /dashboard routes
+  if (
+    pathname === "/chat" ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/chat/")
+  ) {
     // Let updateSession handle the authentication check
     // It will redirect to /auth if not authenticated
     return response;
