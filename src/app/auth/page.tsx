@@ -1,32 +1,45 @@
-"use client";
-import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Githublogin, GoogleSignup } from "./action";
-import { createClient } from "@/utils/supabase/client";
-import { Suspense, useEffect } from "react";
+import { createClient } from "@/utils/supabase/server";
+import { redirect } from "next/navigation";
 
-function AuthContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const search = searchParams.get("redirect");
+export default async function AuthPage({ searchParams }: { searchParams: { redirect?: string } }) {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const search = searchParams?.redirect;
 
-  useEffect(() => {
-    const supabase = createClient();
-    const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        if (search == "create-session") {
-          router.push("/chat");
-        } else {
-          router.push("/chat");
-        }
+  if (data.user) {
+    // Fetch the user's most recent session
+    const { data: sessions } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("created_by", data.user.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    if (sessions && sessions.length > 0) {
+      redirect(`/chat/${sessions[0].id}`);
+    } else {
+      // No session exists, create a new one
+      const shareableLink = Math.random().toString(36).substring(2, 15);
+      const { data: newSession, error: sessionError } = await supabase
+        .from("sessions")
+        .insert([
+          {
+            created_by: data.user.id,
+            title: "New Collaborative Session",
+            shareable_link: shareableLink,
+            created_at: new Date().toISOString(),
+          },
+        ])
+        .select()
+        .single();
+      if (sessionError || !newSession) {
+        // fallback to dashboard if session creation fails
+        redirect("/dashboard");
       }
-    };
-    fetchUser();
-  }, []);
-
-  if (search == "create-session") {
-    router.push("/chat");
+      redirect(`/chat/${newSession.id}`);
+    }
   }
 
   return (
@@ -42,6 +55,7 @@ function AuthContent() {
                 Sign in below to start a session with your friends and family!
               </p>
               <form action={GoogleSignup}>
+                <input type="hidden" name="redirect" value={search ?? ""} />
                 <Button className="bg-[#111]">
                   {" "}
                   <svg
@@ -72,6 +86,7 @@ function AuthContent() {
                 </Button>
               </form>
               <form action={Githublogin}>
+                <input type="hidden" name="redirect" value={search ?? ""} />
                 <Button variant="outline" className="w-full max-w-[300px] mt-4">
                   Continue with Github
                 </Button>
@@ -99,13 +114,5 @@ function AuthContent() {
         </div>
       </main>
     </section>
-  );
-}
-
-export default function AuthPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <AuthContent />
-    </Suspense>
   );
 }

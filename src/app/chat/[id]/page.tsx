@@ -18,6 +18,11 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useMarkdownProcessor } from "@/hook/markdownProcessor";
 import Navbar from "@/components/Navbar";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { createClient } from "@/utils/supabase/client";
+import { encrypt, decrypt } from "@/utils/supabase/encryption"; 
 
 type TabType = "create" | "explore" | "code" | "learn";
 
@@ -60,6 +65,11 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   const [activeTab, setActiveTab] = useState<TabType>("create");
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const [showCollaborate, setShowCollaborate] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const searchParams = useSearchParams();
+  const sessionId = params.id;
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -113,6 +123,19 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     try {
       await append({ content: input, role: "user" });
       setInput("");
+
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+      await supabase.from("messages").insert({
+        session_id: sessionId,
+        user_id: user.id,
+        role: "user",
+        content: encrypt(input),
+        created_at: new Date().toISOString(),
+      });
     } finally {
       setIsSending(false);
     }
@@ -126,10 +149,127 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     setActiveTab(tab);
   };
 
+  const handleNewChat = async () => {
+    try {
+      const response = await fetch("/api/sessions/create", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to create session");
+      }
+      const data = await response.json();
+      if (data.sessionId) {
+        router.push(`/chat/${data.sessionId}`);
+      } else {
+        throw new Error("No session ID received");
+      }
+    } catch (error) {
+      console.error("Error creating session:", error);
+    }
+  };
+
+  // Add participant if ?invite=1 is present
+  useEffect(() => {
+    const addParticipantIfNeeded = async () => {
+      const invite = searchParams.get("invite");
+      if (invite === "1") {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        // Check if already a participant
+        const { data: existing } = await supabase
+          .from("session_participants")
+          .select("id")
+          .eq("session_id", sessionId)
+          .eq("user_id", user.id)
+          .single();
+        if (!existing) {
+          await supabase.from("session_participants").insert({
+            session_id: sessionId,
+            user_id: user.id,
+            joined_at: new Date().toISOString(),
+          });
+        }
+      }
+    };
+    addParticipantIfNeeded();
+  }, [searchParams, sessionId]);
+
+  // Check if user is a participant or creator
+  useEffect(() => {
+    const checkAccess = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/auth");
+        return;
+      }
+      // Check if user is creator
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("created_by")
+        .eq("id", sessionId)
+        .single();
+      if (session && session.created_by === user.id) return;
+      // Check if user is a participant
+      const { data: participant } = await supabase
+        .from("session_participants")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("user_id", user.id)
+        .single();
+      if (!participant) {
+        router.push("/dashboard");
+      }
+    };
+    checkAccess();
+  }, [sessionId, router]);
+
   return (
     <>
       <Navbar />
       <div className="flex h-[calc(100vh-4rem)] flex-col bg-zinc-50">
+        <div className="flex items-center justify-between px-4 pt-4">
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard">
+              <Button variant="outline">🏠 Home</Button>
+            </Link>
+            <Button variant="default" onClick={handleNewChat}>
+              ➕ New Chat
+            </Button>
+          </div>
+          <Dialog open={showCollaborate} onOpenChange={setShowCollaborate}>
+            <DialogTrigger asChild>
+              <Button variant="secondary">🤝 Collaborate</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Invite to Collaborate</DialogTitle>
+                <DialogDescription>
+                  Share this link with others to invite them to this session:
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2 mt-4">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}/chat/${sessionId}?invite=1`}
+                  className="flex-1 border rounded px-2 py-1 text-sm"
+                  onFocus={e => e.target.select()}
+                />
+                <Button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/chat/${sessionId}?invite=1`);
+                    setInviteCopied(true);
+                    setTimeout(() => setInviteCopied(false), 2000);
+                  }}
+                >
+                  {inviteCopied ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
         <div className="flex-1 overflow-hidden">
           <div
             ref={scrollAreaRef}
@@ -233,7 +373,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                           : ""
                       }
                     >
-                      <MessageContent content={msg.content} />
+                      <MessageContent content={decrypt(msg.content)} />
                     </div>
                     <div
                       className={`absolute ${

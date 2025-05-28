@@ -5,13 +5,16 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/utils/supabase/server";
 
-export async function Githublogin() {
+export async function Githublogin(formData: FormData) {
   const supabase = await createClient();
+  // Get the redirect param from the form (if present)
+  const redirectParam = formData.get("redirect") as string | undefined;
+  const nextPath = redirectParam === "create-session" ? "/chat" : "/";
 
   const { error, data } = await supabase.auth.signInWithOAuth({
     provider: "github",
     options: {
-      redirectTo: `http://localhost:3000/auth/callback`,
+      redirectTo: `http://localhost:3000/auth/callback?next=${encodeURIComponent(nextPath)}`,
     },
   });
 
@@ -28,13 +31,16 @@ export async function Githublogin() {
   redirect("/");
 }
 
-export async function GoogleSignup() {
+export async function GoogleSignup(formData: FormData) {
   const supabase = await createClient();
+  // Get the redirect param from the form (if present)
+  const redirectParam = formData.get("redirect") as string | undefined;
+  const nextPath = redirectParam === "create-session" ? "/chat" : "/";
 
   const { error, data } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `http://localhost:3000/auth/gcallback`,
+      redirectTo: `http://localhost:3000/auth/gcallback?next=${encodeURIComponent(nextPath)}`,
     },
   });
 
