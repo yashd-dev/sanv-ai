@@ -15,6 +15,7 @@ import {
   Newspaper,
   Code,
   GraduationCap,
+  ChevronUp,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMarkdownProcessor } from "@/hook/markdownProcessor";
@@ -30,7 +31,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createClient } from "@/utils/supabase/client";
-import { encrypt, decrypt } from "@/utils/supabase/encryption";
 
 type TabType = "create" | "explore" | "code" | "learn";
 
@@ -75,35 +75,112 @@ interface Session {
 interface Message {
   id: string;
   session_id: string;
-  user_id: string;
+  sender_id: string | null; // Can be null for LLM responses
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  is_llm_response?: boolean;
+  sequence_number: number;
+}
+
+interface ChatMessage {
+  id: string;
+  content: string;
+  role: "user" | "assistant";
 }
 
 interface ChatClientProps {
   session: Session;
   messages: Message[];
   userId: string;
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalMessages: number;
+  };
 }
 
 export default function ChatClient({
   session,
   messages: initialMessages,
   userId,
+  pagination,
 }: ChatClientProps) {
-  const { messages, input, setInput, append } = useChat({ initialMessages });
+  // Add a ref to store the current sequence number for message pairs
+  const currentSequenceRef = useRef<number | null>(null);
+
+  const { messages, input, setInput, append } = useChat({
+    initialMessages: initialMessages
+      .sort((a, b) => {
+        // Primary sort by sequence number
+        if (a.sequence_number !== b.sequence_number) {
+          return a.sequence_number - b.sequence_number;
+        }
+        // Secondary sort: user messages (is_llm_response: false) before LLM responses (is_llm_response: true)
+        // A 'false' value (user message) is considered "less than" a 'true' value (LLM response)
+        // so `false - true` would be `0 - 1 = -1` (a comes before b)
+        // and `true - false` would be `1 - 0 = 1` (b comes before a)
+        return (a.is_llm_response ? 1 : 0) - (b.is_llm_response ? 1 : 0);
+      })
+      .map((msg) => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role,
+      })) as ChatMessage[],
+    onFinish: async (message) => {
+      // Store LLM response in database
+      const supabase = createClient();
+      try {
+        // Use the stored sequence number for the LLM response
+        const sequenceNumber = currentSequenceRef.current;
+        if (sequenceNumber === null) {
+          console.error("No sequence number available for LLM response");
+          return;
+        }
+
+        const { error } = await supabase.from("messages").insert({
+          session_id: session.id,
+          sender_id: null,
+          role: "assistant",
+          content: message.content,
+          created_at: new Date().toISOString(),
+          is_llm_response: true,
+          sequence_number: sequenceNumber, // Use the same sequence as user message
+        });
+
+        if (error) {
+          console.error("Error saving LLM response:", error);
+        }
+
+        // Clear the sequence number after use
+        currentSequenceRef.current = null;
+      } catch (error) {
+        console.error("Error saving LLM response:", error);
+        // Clear sequence number on error
+        currentSequenceRef.current = null;
+      }
+    },
+  });
+
   const [isCopied, setIsCopied] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("create");
   const [isSending, setIsSending] = useState(false);
+  const MAX_RETRIES = 3;
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [showCollaborate, setShowCollaborate] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState("");
   const searchParams = useSearchParams();
   const sessionId = session.id;
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Set invite URL on client-side
+  useEffect(() => {
+    setInviteUrl(`${window.location.origin}/chat/${sessionId}?invite=1`);
+  }, [sessionId]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -160,18 +237,56 @@ export default function ChatClient({
     if (!input.trim()) return;
 
     setIsSending(true);
-    try {
-      await append({ content: input, role: "user" });
-      setInput("");
+    const messageContent = input;
+    setInput("");
 
+    try {
+      // Generate a unique sequence number for this message pair
+      const timestamp = Date.now();
+      currentSequenceRef.current = timestamp; // Store for LLM response
+
+      // First append to UI for immediate feedback
+      await append({ content: messageContent, role: "user" });
+
+      // Then try to save to database with retries
       const supabase = createClient();
-      await supabase.from("messages").insert({
-        session_id: sessionId,
-        user_id: userId,
-        role: "user",
-        content: encrypt(input),
-        created_at: new Date().toISOString(),
-      });
+      let success = false;
+      let attempts = 0;
+
+      while (!success && attempts < MAX_RETRIES) {
+        try {
+          const { error } = await supabase.from("messages").insert({
+            session_id: sessionId,
+            sender_id: userId,
+            role: "user",
+            content: messageContent,
+            created_at: new Date().toISOString(),
+            is_llm_response: false,
+            sequence_number: timestamp, // Use the same timestamp
+          });
+
+          if (error) throw error;
+          success = true;
+        } catch (error) {
+          attempts++;
+          if (attempts === MAX_RETRIES) {
+            console.error(
+              "Failed to save message after",
+              MAX_RETRIES,
+              "attempts:",
+              error
+            );
+            throw error;
+          }
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.pow(2, attempts) * 1000)
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      // Clear sequence number on error
+      currentSequenceRef.current = null;
     } finally {
       setIsSending(false);
     }
@@ -229,6 +344,54 @@ export default function ChatClient({
     addParticipantIfNeeded();
   }, [searchParams, sessionId, userId]);
 
+  // Update real-time subscription
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`messages:${sessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+          // Only append if it's not from the current user (to avoid duplicates)
+          // and if it's not an LLM response (those are handled by onFinish)
+          if (newMessage.sender_id !== userId && !newMessage.is_llm_response) {
+            append({
+              content: newMessage.content,
+              role: newMessage.role,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sessionId, userId, append]);
+
+  const loadMoreMessages = async () => {
+    if (pagination.currentPage >= pagination.totalPages || isLoadingMore)
+      return;
+
+    setIsLoadingMore(true);
+    try {
+      const nextPage = pagination.currentPage + 1;
+      router.push(`/chat/${session.id}?page=${nextPage}`, { scroll: false });
+    } catch (error) {
+      console.error("Error loading more messages:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -257,15 +420,13 @@ export default function ChatClient({
                 <input
                   type="text"
                   readOnly
-                  value={`${window.location.origin}/chat/${sessionId}?invite=1`}
+                  value={inviteUrl}
                   className="flex-1 border rounded px-2 py-1 text-sm"
                   onFocus={(e) => e.target.select()}
                 />
                 <Button
                   onClick={() => {
-                    navigator.clipboard.writeText(
-                      `${window.location.origin}/chat/${sessionId}?invite=1`
-                    );
+                    navigator.clipboard.writeText(inviteUrl);
                     setInviteCopied(true);
                     setTimeout(() => setInviteCopied(false), 2000);
                   }}
@@ -281,6 +442,28 @@ export default function ChatClient({
             ref={scrollAreaRef}
             className="h-full overflow-y-auto px-4 py-6 pb-32"
           >
+            {pagination.currentPage < pagination.totalPages && (
+              <div className="flex justify-center py-4">
+                <Button
+                  variant="outline"
+                  onClick={loadMoreMessages}
+                  disabled={isLoadingMore}
+                  className="flex items-center gap-2"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                      <span>Loading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Load More Messages</span>
+                      <ChevronUp className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
             {messages.length === 0 && !input && (
               <div className="mx-auto flex w-full max-w-3xl flex-col space-y-12 px-4 pb-10 pt-safe-offset-10">
                 <div className="flex h-[calc(100vh-20rem)] items-start justify-center">
@@ -379,7 +562,7 @@ export default function ChatClient({
                           : ""
                       }
                     >
-                      <MessageContent content={decrypt(msg.content)} />
+                      <MessageContent content={msg.content} />
                     </div>
                     <div
                       className={`absolute ${

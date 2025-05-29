@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { generateSessionTitle } from "@/utils/sessionTitleGenerator";
 import { hash } from "bcrypt";
 
 export async function POST() {
@@ -67,38 +68,31 @@ export async function POST() {
       }
     }
 
-    // Generate a unique shareable link
-    const shareableLink = Math.random().toString(36).substring(2, 15);
+    // Generate a random title
+    const title = generateSessionTitle();
 
     // Create the session
     const { data: session, error: sessionError } = await supabase
       .from("sessions")
-      .insert([
-        {
-          created_by: user.id,
-          title: "New Collaborative Session",
-          shareable_link: shareableLink,
-          created_at: new Date().toISOString(),
-        },
-      ])
+      .insert({
+        created_by: user.id,
+        title: title,
+        shareable_link: crypto.randomUUID(),
+      })
       .select()
       .single();
 
     if (sessionError) {
-      console.error("Error inserting session into Supabase:", sessionError);
+      console.error("Error creating session:", sessionError);
       return NextResponse.json(
-        { error: "Error creating session" },
+        { error: "Failed to create session" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
-      sessionId: session.id,
-      message: "Session created successfully",
-      session,
-    });
+    return NextResponse.json({ sessionId: session.id });
   } catch (error) {
-    console.error("An unexpected error occurred in the API route:", error);
+    console.error("Error in session creation:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -37,6 +37,7 @@ CREATE TABLE messages (
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT now(),
     is_llm_response BOOLEAN DEFAULT FALSE,
+    sequence_number BIGINT NOT NULL,
     deleted_at TIMESTAMP
 );
 
