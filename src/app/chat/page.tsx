@@ -16,8 +16,6 @@ import {
   GraduationCap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import { useMarkdownProcessor } from "@/hook/markdownProcessor";
 
 type TabType = "create" | "explore" | "code" | "learn";
@@ -55,12 +53,13 @@ function MessageContent({ content }: { content: string }) {
 }
 
 export default function Chat() {
-  const { messages, input, setInput, append, isLoading } = useChat();
+  const { messages, input, setInput, append } = useChat();
   const [isCopied, setIsCopied] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("create");
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -99,12 +98,17 @@ export default function Chat() {
     }
   };
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (isAtBottom) {
       scrollToBottom();
     }
-  }, [messages]);
+  }, [messages, isAtBottom]);
+
+  useEffect(() => {
+    if (isAtBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isAtBottom]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -9,7 +9,6 @@ import React, {
   createElement,
   Fragment,
   useEffect,
-  useMemo,
   useState,
   ComponentPropsWithoutRef,
 } from "react";
@@ -93,33 +92,7 @@ export const useMarkdownProcessor = (content: string) => {
           em: ({ children }: ComponentPropsWithoutRef<"em">) => (
             <em>{children}</em>
           ),
-          pre: ({ children, className }: ComponentPropsWithoutRef<"pre">) => {
-            const [isCopied, setIsCopied] = useState(false);
-            const code = React.Children.toArray(
-              children
-            )[0] as React.ReactElement & { props: { children?: string } };
-            const codeContent = code?.props?.children ?? "";
-
-            return (
-              <div className="relative group">
-                <div className="absolute right-2 top-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => {
-                      navigator.clipboard.writeText(codeContent);
-                      setIsCopied(true);
-                      setTimeout(() => setIsCopied(false), 2000);
-                    }}
-                  >
-                    {isCopied ? "Copied!" : "Copy"}
-                  </Button>
-                </div>
-                <pre className={className}>{children}</pre>
-              </div>
-            );
-          },
+          pre: Pre,
           ul: ({ children }: ComponentPropsWithoutRef<"ul">) => (
             <ul className="...">{children}</ul>
           ),
@@ -203,9 +176,7 @@ const CodeBlock = ({
   }
 
   return (
-    <code className="rounded px-1.5 py-0.5 text-sm text-black">
-      {children}
-    </code>
+    <code className="rounded px-1.5 py-0.5 text-sm text-black">{children}</code>
   );
 };
 
@@ -237,4 +208,29 @@ const Mermaid = ({ content }: { content: string }) => {
   } else {
     return <div dangerouslySetInnerHTML={{ __html: diagram ?? "" }} />;
   }
+};
+
+// Convert pre to a proper React component
+const Pre: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (typeof children === "string") {
+      navigator.clipboard.writeText(children);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+
+  return (
+    <pre className="relative">
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 p-2 rounded bg-gray-700 text-white hover:bg-gray-600"
+      >
+        {isCopied ? "Copied!" : "Copy"}
+      </button>
+      {children}
+    </pre>
+  );
 };

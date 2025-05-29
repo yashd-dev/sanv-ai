@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { hash } from "bcrypt";
 
 export async function POST(request: Request) {
   try {
@@ -36,37 +35,30 @@ export async function POST(request: Request) {
       );
     }
 
-    // Hash the password
-    const passwordHash = await hash(password, 10);
-
     // Create new user
-    const { data: newUser, error: createError } = await supabase
+    const { data: user, error: userError } = await supabase
       .from("users")
       .insert([
         {
           email,
           username,
-          password_hash: passwordHash,
           created_at: new Date().toISOString(),
         },
       ])
       .select()
       .single();
 
-    if (createError) {
+    if (userError) {
       return NextResponse.json(
         { error: "Error creating user" },
         { status: 500 }
       );
     }
 
-    // Remove password_hash from response
-    const { password_hash, ...userWithoutPassword } = newUser;
-
     return NextResponse.json(
       {
         message: "User created successfully",
-        user: userWithoutPassword,
+        user,
       },
       { status: 201 }
     );

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { createAndRedirectToNewSession } from "@/lib/actions/sessions";
 import Navbar from "@/components/Navbar";
 
 interface Session {
